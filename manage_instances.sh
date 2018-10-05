@@ -121,7 +121,7 @@ create_custom_instance_with_image_family() {
     --maintenance-policy=${MAINTENANCE_POLICY} \
     --boot-disk-type=${DISK_TYPE} --boot-disk-size=${BOOT_DISK_SIZE_GB} \
     --metadata-from-file startup-script=${VM_STARTUP_SCRIPT}
-  echo "Instance created. Run start_instance ${instance_name} to start."
+  echo "Instance created; it will take ~5 min to run the startup script, after which it's recommended to reboot the VM."
 }
 
 start_instance() {
@@ -141,12 +141,12 @@ stop_instance() {
 delete_instance() {
   instance_name=$1
   read -p "Deleting instance ${instance_name}. Type Y to confirm " -n 1 -r
-  if [[ $REPLY =~ ^[Yy]$ ]]
-  then
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
     gcloud compute instances delete ${instance_name}
     echo "Instance ${instance_name} deleted."
+  else
+    echo "Instance ${instance_name} was not deleted."
   fi
-  echo "Instance ${instance_name} was not deleted."
 }
 
 create_1gpu_mlperf_ssd_instance() {

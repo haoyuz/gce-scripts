@@ -1,2 +1,3 @@
 # gce-scripts
-Scripts to operate VMs on GCE
+
+Scripts to manage VMs on Google Cloud.
