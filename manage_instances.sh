@@ -62,9 +62,8 @@ get_data_disk_name() {
 create_data_disk() {
   disk_name=$1
   disk_size_gb=$2
-  disk_type=$3
-  echo "Creating data disk ${disk_name}, ${disk_size_gb}GB, ${disk_type}..."
-  $GCLOUD $COMPUTE disks create ${disk_name} --size $disk_size_gb --type ${disk_type}
+  echo "Creating data disk ${disk_name}, ${disk_size_gb}GB..."
+  $GCLOUD $COMPUTE disks create ${disk_name} --size $disk_size_gb --type ${DISK_TYPE}
   echo "Disk ${disk_name} created."
 }
 
@@ -72,7 +71,7 @@ clone_data_disk() {
   disk_name=$1
   disk_snapshot_name=$2
   echo "Creating data disk ${disk_name} using snapshot ${disk_snapshot_name}"
-  $GCLOUD $COMPUTE disks create ${disk_name} --source-snapshot ${disk_snapshot_name}
+  $GCLOUD $COMPUTE disks create ${disk_name} --source-snapshot ${disk_snapshot_name} --type ${DISK_TYPE}
   echo "Disk ${disk_name} created."
 }
 
@@ -178,7 +177,7 @@ start_8gpu_mlperf_ssd_instance() {
 }
 
 # INSTANCE_NAME="my-test-instance"
-# create_data_disk $DATA_DISK_NAME $DISK_SIZE_GB $DISK_TYPE
+# create_data_disk $DATA_DISK_NAME $DISK_SIZE_GB
 # clone_data_disk mlperf-ssd-data-2 mlperf-ssd-data-snapshot
 # delete_instance "my-hello-world-vm"
 # attach_data_disk $INSTANCE_NAME $DATA_DISK_NAME
