@@ -11,10 +11,23 @@ TF_MODELS_REPO="https://github.com/tensorflow/models.git"
 TF_MODELS_DIR="$HOME/models"
 COCO_API_REPO="https://github.com/cocodataset/cocoapi.git"
 COCO_API_DIR="$HOME/cocoapi"
+MLPERF_REPO="https://github.com/mlperf/training.git"
+MLPERF_DIR="$HOME/training"
 
-# Docker image
+# See Dockerfile
 DOCKER_IMAGE="gcr.io/google.com/tensorflow-performance/mlperf/ssd:latest"
-# DOCKER_IMAGE="tensorflow/tensorflow:nightly-gpu"
+PYTHONPATH=${TF_MODELS_DIR}:${TF_MODELS_DIR}/research:${COCO_API_DIR}/PythonAPI:${MLPERF_DIR}/compliance
+DATA_DIR=/data/coco2017
+BACKBONE_MODEL_PATH=/data/resnet34/model.ckpt-28152
+GCE_VARIABLE_UPDATE_ARGS="--variable_update=replicated --all_reduce_spec=nccl --gradient_repacking=2 --network_topology=gcp_v100"
+
+EVAL_STEPS_32x1="120000,160000,180000,200000,220000,240000"
+EVAL_STEPS_128x1="30000,40000,45000,50000,55000,60000"
+EVAL_STEPS_64x8="7500,10000,11250,12500,13750,15000"
+EVAL_STEPS_128x8="3750,5000,5625,6250,6875,7500"
+
+TARGET_ACCURACY=0.212
+COMPLIANCE_FILE="$HOME/ssd_compliance_log.txt"
 
 
 mount_data_disk() {
@@ -55,85 +68,90 @@ download_and_build_pycocotools() {
   popd
 }
 
+download_mlperf() {
+  pushd $HOME
+  git clone ${MLPERF_REPO}
+  popd
+}
+
 prepare_code() {
   download_benchmarks
   download_and_build_official_models
   download_and_build_pycocotools
+  download_mlperf
 }
 
 download_docker_image() {
+  # First, activate service account that has download privilege
+  # gcloud auth activate-service-account [ACCOUNT_NAME] --key-file=[PATH_TO_KEY_FILE]
   gcloud docker -- pull ${DOCKER_IMAGE}
 }
 
-train_ssd() {
-  num_gpus=$1
-  batch_size_per_split=$2
-  variable_update=$3
-  num_epochs=$4
-  use_fp16=$5
-  xla_compile=$6
+run_experiment() {
+  num_gpus=$1                # should be 1 or 8
+  batch_size=$2
+  eval_during_training_args=$3
+  additional_args=$4
+  exp_dir=$5
 
-  run_id=`date +%m%d%H%M`
-  train_dir="$HOME/ssd_gce_${num_gpus}gpu_batch${batch_size_per_split}"
-  if [[ -n "$use_fp16" && "$use_fp16" = True ]]; then
-    train_dir=${train_dir}_fp16
-  fi
-  if [[ -n "$xla_compile" && "$xla_compile" = True ]]; then
-    train_dir=${train_dir}_xla
-  fi
-  train_dir=${train_dir}_${run_id}
+  num_epochs=60
+  if [ ${num_gpus} == "8" ]; then num_epochs=80; fi
+  variable_update_args=""
+  if [ ${num_gpus} == "8" ]; then variable_update_args=${GCE_VARIABLE_UPDATE_ARGS}; fi
+  datasets_num_private_threads=15
+  if [ ${num_gpus} == "8" ]; then datasets_num_private_threads=100; fi
+  num_inter_threads=25
+  if [ ${num_gpus} == "8" ]; then num_inter_threads=160; fi
 
-  nvidia-docker run -it -v $HOME:$HOME -v /data:/data \
-    ${DOCKER_IMAGE} bash -c \
-    "PYTHONPATH=${TF_MODELS_DIR}:${TF_MODELS_DIR}/research:${COCO_API_DIR}/PythonAPI \
-    python ${TF_BENCHMARKS_DIR}/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py \
-      --model=ssd300 --data_name=coco \
-      --num_gpus=${num_gpus} --batch_size=${batch_size_per_split} --variable_update=${variable_update} \
-      --optimizer=momentum --weight_decay=5e-4 --momentum=0.9 \
-      --backbone_model_path=/data/resnet34/model.ckpt-28152 --data_dir=/data/coco2017 \
-      --num_epochs=${num_epochs} --num_warmup_batches=0 --train_dir=${train_dir} \
-      --save_model_steps=1000 --max_ckpts_to_keep=250 --summary_verbosity=1 --save_summaries_steps=10 \
-      --use_fp16=${use_fp16:-False} --xla_compile=${xla_compile:-False} --alsologtostderr"
-
-  echo ${train_dir}
-}
-
-eval_all_checkpoints_ssd() {
-  train_dir=$1
-  variable_update=$2
-
-  eval_dir=${train_dir}/eval
-
-  for ckpt_index in `ls -v ${train_dir}/*.index`; do
-    ckpt_name=${ckpt_index%.index}
-
-    nvidia-docker run -it -v $HOME:$HOME -v /data:/data \
-      ${DOCKER_IMAGE} bash -c \
-      "PYTHONPATH=${TF_MODELS_DIR}:${TF_MODELS_DIR}/research:${COCO_API_DIR}/PythonAPI \
-      python ${TF_BENCHMARKS_DIR}/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py \
+  nvidia-docker run -it -v $HOME:$HOME -v /data:/data ${DOCKER_IMAGE} \
+    bash -c "PYTHONPATH=${PYTHONPATH} COMPLIANCE_FILE=${COMPLIANCE_FILE} \
+      python /home/haoyuzhang/benchmarks/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py \
         --model=ssd300 --data_name=coco \
-        --batch_size=64 --num_batches=78 --num_warmup_batches=0 \
-        --variable_update=${variable_update} \
-        --data_dir=/data/coco2017 --train_dir=${ckpt_name} \
-        --eval --eval_dir=${eval_dir} \
-        --summary_verbosity=1 --alsologtostderr"
-  done
+        --data_dir=${DATA_DIR} --backbone_model_path=${BACKBONE_MODEL_PATH} \
+        --optimizer=momentum --weight_decay=5e-4 --momentum=0.9 \
+        --save_model_steps=1000 --max_ckpts_to_keep=5 \
+        --summary_verbosity=1 --save_summaries_steps=100 \
+        --num_gpus=${num_gpus} --batch_size=${batch_size} \
+        --train_dir=${exp_dir} --eval_dir=${exp_dir}/eval \
+        --use_fp16 --xla_compile \
+        --num_epochs=${num_epochs} --num_eval_epochs=1.9 --num_warmup_batches=0 \
+        ${eval_during_training_args} \
+        --datasets_num_private_threads=${datasets_num_private_threads} --num_inter_threads=${num_inter_threads} \
+        ${variable_update_args} ${additional_args}"
 }
 
-train_then_eval_ssd() {
-  num_gpus=$1
-  batch_size_per_split=$2
-  variable_update=$3
-  num_epochs=$4
-  use_fp16=$5
-  xla_compile=$6
+run_experiment_with_dir() {
+  num_gpus=$1                # should be 1 or 8
+  batch_size=$2
+  eval_during_training_args=$3
+  additional_args=$4
 
-  output_file="train_log`date +%m%d%H%M`"
-
-  ( train_ssd ${num_gpus} ${batch_size_per_split} ${variable_update} ${num_epochs} ${use_fp16} ${xla_compile} ) 2>&1 | tee ${output_file}
-  train_dir=$( tail -1 ${output_file} )
-  mv ${outfile_file} ${train_dir}
-  eval_all_checkpoints_ssd ${train_dir} ${variable_update}
+  exp_name="ssd_gpu${num_gpus}_batch${batch_size}_`date +%m%d%H%M`"
+  exp_log=$HOME/${exp_name}.log
+  exp_dir=$HOME/${exp_name}
+  run_experiment ${num_gpus} ${batch_size} ${eval_during_training_args} ${additional_args} ${exp_dir} 2>&1 | tee ${exp_log}
 }
 
-# train_then_eval_ssd 1 128 "parameter_server" 60 True True
+mlperf_1gpu_experiment() {
+  eval_during_training_args="--eval_during_training_at_specified_steps=${EVAL_STEPS_128x1}"
+  additional_args="--ml_perf_compliance_logging --stop_at_top_1_accuracy=${TARGET_ACCURACY}"
+  run_experiment_with_dir 1 128 ${eval_during_training_args} ${additional_args}
+}
+
+mlperf_8gpu_experiment() {
+  eval_during_training_args="--eval_during_training_at_specified_steps=${EVAL_STEPS_64x8}"
+  additional_args="--ml_perf_compliance_logging --stop_at_top_1_accuracy=${TARGET_ACCURACY}"
+  run_experiment_with_dir 8 64 ${eval_during_training_args} ${additional_args}
+}
+
+convergence_tuning_1gpu_experiment() {
+  eval_during_training_args="--eval_during_training_at_specified_epochs=`seq -s, 45 1 60`"
+  additional_args="--stop_at_top_1_accuracy=${TARGET_ACCURACY}"
+  run_experiment_with_dir 1 128 ${eval_during_training_args} ${additional_args}
+}
+
+convergence_tuning_8gpu_experiment() {
+  eval_during_training_args="--eval_during_training_at_specified_epochs=`seq -s, 50 1 70`"
+  additional_args="--stop_at_top_1_accuracy=${TARGET_ACCURACY}"
+  run_experiment_with_dir 8 64 ${eval_during_training_args} ${additional_args}
+}

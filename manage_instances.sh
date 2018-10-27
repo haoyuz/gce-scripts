@@ -10,8 +10,6 @@
 # * Google Cloud SDK (gcloud command)
 # ------------------------------------------------------------------------------
 
-# set -e
-
 GCLOUD=gcloud
 COMPUTE="compute"
 SSH="ssh"
@@ -184,4 +182,3 @@ start_8gpu_mlperf_ssd_instance() {
 # start_instance $INSTANCE_NAME
 # stop_instance $INSTANCE_NAME
 # create_custom_instance_with_image_family $INSTANCE_NAME $IMAGE_FAMILY $IMAGE_PROJECT 12 1 64
-
