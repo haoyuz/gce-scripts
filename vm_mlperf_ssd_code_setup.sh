@@ -19,11 +19,14 @@ DOCKER_IMAGE="gcr.io/google.com/tensorflow-performance/mlperf/ssd:latest"
 PYTHONPATH=${TF_MODELS_DIR}:${TF_MODELS_DIR}/research:${COCO_API_DIR}/PythonAPI:${MLPERF_DIR}/compliance
 DATA_DIR=/data/coco2017
 BACKBONE_MODEL_PATH=/data/resnet34/model.ckpt-28152
-GCE_VARIABLE_UPDATE_ARGS="--variable_update=replicated --all_reduce_spec=nccl --gradient_repacking=2 --network_topology=gcp_v100"
+GCE_VARIABLE_UPDATE_ARGS="--variable_update=replicated --all_reduce_spec=nccl --gradient_repacking=2"
 
 EVAL_STEPS_32x1="120000,160000,180000,200000,220000,240000"
-EVAL_STEPS_128x1="30000,40000,45000,50000,55000,60000"
-EVAL_STEPS_64x8="7500,10000,11250,12500,13750,15000"
+#EVAL_STEPS_128x1="30000,40000,45000,50000,55000,60000"
+EVAL_STEPS_128x1="30000,40000,45000,46206,48055,50000,55000,60000"  # Added epoch 48, 50, 52
+#EVAL_STEPS_64x8="7500,10000,11250,12500,13750,15000"
+EVAL_STEPS_64x8="7500,10000,11250,12500,12707,13750,15000"  # Added epoch 55
+
 EVAL_STEPS_128x8="3750,5000,5625,6250,6875,7500"
 
 TARGET_ACCURACY=0.212
@@ -104,18 +107,16 @@ run_experiment() {
   if [ ${num_gpus} == "8" ]; then num_inter_threads=160; fi
 
   nvidia-docker run -it -v $HOME:$HOME -v /data:/data ${DOCKER_IMAGE} \
-    bash -c "PYTHONPATH=${PYTHONPATH} COMPLIANCE_FILE=${COMPLIANCE_FILE} \
+    bash -c "PYTHONPATH=${PYTHONPATH} \
       python /home/haoyuzhang/benchmarks/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py \
         --model=ssd300 --data_name=coco \
         --data_dir=${DATA_DIR} --backbone_model_path=${BACKBONE_MODEL_PATH} \
         --optimizer=momentum --weight_decay=5e-4 --momentum=0.9 \
-        --save_model_steps=1000 --max_ckpts_to_keep=5 \
-        --summary_verbosity=1 --save_summaries_steps=100 \
         --num_gpus=${num_gpus} --batch_size=${batch_size} \
         --train_dir=${exp_dir} --eval_dir=${exp_dir}/eval \
         --use_fp16 --xla_compile \
         --num_epochs=${num_epochs} --num_eval_epochs=1.9 --num_warmup_batches=0 \
-        ${eval_during_training_args} \
+        ${eval_during_training_args} --collect_eval_results_async \
         --datasets_num_private_threads=${datasets_num_private_threads} --num_inter_threads=${num_inter_threads} \
         ${variable_update_args} ${additional_args}"
 }
@@ -129,29 +130,29 @@ run_experiment_with_dir() {
   exp_name="ssd_gpu${num_gpus}_batch${batch_size}_`date +%m%d%H%M`"
   exp_log=$HOME/${exp_name}.log
   exp_dir=$HOME/${exp_name}
-  run_experiment ${num_gpus} ${batch_size} ${eval_during_training_args} ${additional_args} ${exp_dir} 2>&1 | tee ${exp_log}
+  run_experiment ${num_gpus} ${batch_size} "${eval_during_training_args}" "${additional_args}" ${exp_dir} 2>&1 | tee ${exp_log}
 }
 
 mlperf_1gpu_experiment() {
   eval_during_training_args="--eval_during_training_at_specified_steps=${EVAL_STEPS_128x1}"
   additional_args="--ml_perf_compliance_logging --stop_at_top_1_accuracy=${TARGET_ACCURACY}"
-  run_experiment_with_dir 1 128 ${eval_during_training_args} ${additional_args}
+  run_experiment_with_dir 1 128 "${eval_during_training_args}" "${additional_args}"
 }
 
 mlperf_8gpu_experiment() {
   eval_during_training_args="--eval_during_training_at_specified_steps=${EVAL_STEPS_64x8}"
   additional_args="--ml_perf_compliance_logging --stop_at_top_1_accuracy=${TARGET_ACCURACY}"
-  run_experiment_with_dir 8 64 ${eval_during_training_args} ${additional_args}
+  run_experiment_with_dir 8 64 "${eval_during_training_args}" "${additional_args}"
 }
 
 convergence_tuning_1gpu_experiment() {
   eval_during_training_args="--eval_during_training_at_specified_epochs=`seq -s, 45 1 60`"
-  additional_args="--stop_at_top_1_accuracy=${TARGET_ACCURACY}"
-  run_experiment_with_dir 1 128 ${eval_during_training_args} ${additional_args}
+  additional_args="--stop_at_top_1_accuracy=${TARGET_ACCURACY} --summary_verbosity=1 --save_summaries_steps=100"
+  run_experiment_with_dir 1 128 "${eval_during_training_args}" "${additional_args}"
 }
 
 convergence_tuning_8gpu_experiment() {
   eval_during_training_args="--eval_during_training_at_specified_epochs=`seq -s, 50 1 70`"
-  additional_args="--stop_at_top_1_accuracy=${TARGET_ACCURACY}"
-  run_experiment_with_dir 8 64 ${eval_during_training_args} ${additional_args}
+  additional_args="--stop_at_top_1_accuracy=${TARGET_ACCURACY} --summary_verbosity=1 --save_summaries_steps=100"
+  run_experiment_with_dir 8 64 "${eval_during_training_args}" "${additional_args}"
 }
