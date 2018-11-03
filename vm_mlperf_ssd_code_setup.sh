@@ -116,6 +116,7 @@ run_experiment() {
         --train_dir=${exp_dir} --eval_dir=${exp_dir}/eval \
         --use_fp16 --xla_compile \
         --num_epochs=${num_epochs} --num_eval_epochs=1.9 --num_warmup_batches=0 \
+        --loss_type_to_report=base_loss  --single_l2_loss_op --compute_lr_on_cpu \
         ${eval_during_training_args} --collect_eval_results_async \
         --datasets_num_private_threads=${datasets_num_private_threads} --num_inter_threads=${num_inter_threads} \
         ${variable_update_args} ${additional_args}"
