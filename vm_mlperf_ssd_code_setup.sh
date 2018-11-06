@@ -108,7 +108,7 @@ run_experiment() {
 
   nvidia-docker run -it -v $HOME:$HOME -v /data:/data ${DOCKER_IMAGE} \
     bash -c "PYTHONPATH=${PYTHONPATH} \
-      python /home/haoyuzhang/benchmarks/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py \
+      python ${TF_BENCHMARKS_DIR}/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py \
         --model=ssd300 --data_name=coco \
         --data_dir=${DATA_DIR} --backbone_model_path=${BACKBONE_MODEL_PATH} \
         --optimizer=momentum --weight_decay=5e-4 --momentum=0.9 \
