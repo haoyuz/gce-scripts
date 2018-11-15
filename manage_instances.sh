@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 
 # ------------------------------------------------------------------------------
-# Create VM instances and prepare libraries, data, and programs to run MLPerf
-# SSD model on Google Cloud.
-#
-# Expected to work in open source.
+# Create VM instances and prepare libraries, data, and programs to run
+# TensorFlow in Google Cloud.
 #
 # Prerequisites:
-# * Google Cloud SDK (gcloud command)
+# * Google Cloud SDK
+# * gcloud command line tool configured properly (service account, zone)
 # ------------------------------------------------------------------------------
 
 GCLOUD=gcloud
@@ -51,6 +50,8 @@ TF_MODELS_REPO="https://github.com/tensorflow/models.git"
 # Required for instances with GPUs
 MAINTENANCE_POLICY="TERMINATE"
 
+# Allow instance to have full access to all Cloud APIs
+ACCESS_SCOPES="https://www.googleapis.com/auth/cloud-platform"
 
 get_data_disk_name() {
   instance_name=$1
@@ -102,23 +103,41 @@ get_accelerator_spec() {
   echo "type=${gpu_type},count=${gpu_count}"
 }
 
-create_custom_instance_with_image_family() {
-  instance_name=$1
+get_image_spec() {
+  image=$1
   image_family=$2
   image_project=$3
-  cpu_count=$4
-  gpu_count=$5
-  mem_size_gb=$6
+  image_spec=""
+  if [[ $image = *[!\ ]* ]]; then image_spec="--image=${image}"; fi
+  if [[ $image_family = *[!\ ]* ]]; then image_spec="${image_spec} --image-family=${image_family}"; fi
+  image_spec="${image_spec} --image-project=${image_project}"
+  echo ${image_spec}
+}
+
+create_custom_instance() {
+  instance_name=$1
+  cpu_count=$2
+  gpu_count=$3
+  mem_size_gb=$4
+
+  # Optionally set image and project name to create instances from image. If
+  # not specified the latest version of Ubuntu 16.04 image will be used.
+  image=${5:-""}
+  image_family=${6:-$IMAGE_FAMILY}
+  image_project=${7:-$IMAGE_PROJECT}
+
   accelerator_spec=$(get_accelerator_spec ${GPU_TYPE} ${gpu_count})
+  image_spec=$(get_image_spec "${image}" "${image_family}" "${image_project}")
+
   echo "Creating instance ${instance_name}..."
   $GCLOUD $COMPUTE instances create ${instance_name} \
-    --zone ${ZONE} --image-family ${image_family} --image-project ${image_project} \
-    --min-cpu-platform "${MIN_CPU_PLATFORM}" --custom-cpu ${cpu_count} \
-    --custom-memory ${mem_size_gb} --accelerator ${accelerator_spec} \
-    --maintenance-policy=${MAINTENANCE_POLICY} \
+    --zone=${ZONE} ${image_spec} \
+    --min-cpu-platform="${MIN_CPU_PLATFORM}" --custom-cpu=${cpu_count} \
+    --custom-memory=${mem_size_gb} --accelerator=${accelerator_spec} \
+    --maintenance-policy=${MAINTENANCE_POLICY} --scopes=${ACCESS_SCOPES} \
     --boot-disk-type=${DISK_TYPE} --boot-disk-size=${BOOT_DISK_SIZE_GB} \
     --metadata-from-file startup-script=${VM_STARTUP_SCRIPT}
-  echo "Instance created; it will take ~5 min to run the startup script, after which it's recommended to reboot the VM."
+  echo "It takes ~5 min to run startup script on the created instance."
 }
 
 start_instance() {
@@ -148,29 +167,15 @@ delete_instance() {
 
 create_1gpu_mlperf_ssd_instance() {
   instance_name="$USER-mlperf-ssd-1gpu"
-  data_disk_name="mlperf-ssd-data"
-  create_custom_instance_with_image_family ${instance_name} $IMAGE_FAMILY $IMAGE_PROJECT 12 1 64
-  attach_data_disk ${instance_name} ${data_disk_name}
-}
-
-start_1gpu_mlperf_ssd_instance() {
-  instance_name="$USER-mlperf-ssd-1gpu"
-  data_disk_name="mlperf-ssd-data"
-  start_instance ${instance_name}
+  data_disk_name="${DATA_DISK_NAME}"
+  create_custom_instance ${instance_name} 12 1 64
   attach_data_disk ${instance_name} ${data_disk_name}
 }
 
 create_8gpu_mlperf_ssd_instance() {
   instance_name="$USER-mlperf-ssd-8gpu"
-  data_disk_name="mlperf-ssd-data"
-  create_custom_instance_with_image_family ${instance_name} $IMAGE_FAMILY $IMAGE_PROJECT 96 8 512
-  attach_data_disk ${instance_name} ${data_disk_name}
-}
-
-start_8gpu_mlperf_ssd_instance() {
-  instance_name="$USER-mlperf-ssd-8gpu"
-  data_disk_name="mlperf-ssd-data"
-  start_instance ${instance_name}
+  data_disk_name="${DATA_DISK_NAME}"
+  create_custom_instance ${instance_name} 96 8 512
   attach_data_disk ${instance_name} ${data_disk_name}
 }
 
@@ -181,4 +186,5 @@ start_8gpu_mlperf_ssd_instance() {
 # attach_data_disk $INSTANCE_NAME $DATA_DISK_NAME
 # start_instance $INSTANCE_NAME
 # stop_instance $INSTANCE_NAME
-# create_custom_instance_with_image_family $INSTANCE_NAME $IMAGE_FAMILY $IMAGE_PROJECT 12 1 64
+# create_custom_instance $INSTANCE_NAME 12 1 64
+# create_custom_instance haoyuzhang-tf-cuda-10 12 1 64 "ubuntu-16-04-cuda10-11062018-3" "" "tf-benchmark-dashboard"

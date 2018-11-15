@@ -4,8 +4,6 @@
 # The entire script takes about five minutes to finish.
 #-------------------------------------------------------------------------------
 
-LOGIN=haoyuzhang
-
 #-------------------------------------------------------------------------------
 # Install CUDA 10.0 (and NVIDIA driver)
 # See updated script:
@@ -30,7 +28,10 @@ dpkg --configure -a
 curl -fsSL get.docker.com -o get-docker.sh
 sh get-docker.sh
 
-usermod -a -G docker $LOGIN
+# Allow all users to use sudoless docker
+for username in $(cut -d: -f1 /etc/passwd); do
+  usermod -aG docker $username
+done
 
 #-------------------------------------------------------------------------------
 # Install nvidia-docker2
@@ -53,7 +54,3 @@ apt-get update
 # Install nvidia-docker2 and reload the Docker daemon configuration
 apt-get install -y nvidia-docker2
 pkill -SIGHUP dockerd
-
-# Test nvidia-smi with the latest official CUDA image
-docker run --runtime=nvidia --rm nvidia/cuda:9.0-base nvidia-smi
-

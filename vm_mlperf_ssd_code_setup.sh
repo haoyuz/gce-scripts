@@ -16,6 +16,7 @@ MLPERF_DIR="$HOME/training"
 
 # See Dockerfile
 DOCKER_IMAGE="gcr.io/google.com/tensorflow-performance/mlperf/ssd:latest"
+# DOCKER_IMAGE="gcr.io/google.com/tensorflow-performance/tensorflow/tf-cuda-10:latest"
 PYTHONPATH=${TF_MODELS_DIR}:${TF_MODELS_DIR}/research:${COCO_API_DIR}/PythonAPI:${MLPERF_DIR}/compliance
 DATA_DIR=/data/coco2017
 BACKBONE_MODEL_PATH=/data/resnet34/model.ckpt-28152
