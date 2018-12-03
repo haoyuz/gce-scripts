@@ -188,3 +188,4 @@ create_8gpu_mlperf_ssd_instance() {
 # stop_instance $INSTANCE_NAME
 # create_custom_instance $INSTANCE_NAME 12 1 64
 # create_custom_instance haoyuzhang-tf-cuda-10 12 1 64 "ubuntu-16-04-cuda10-11062018-3" "" "tf-benchmark-dashboard"
+# create_custom_instance haoyuzhang-kokoro-debug 12 1 64 "kokoro-ubuntu1604-v1-vmx-licensed-prod-debug" "" "google.com:kokoro"

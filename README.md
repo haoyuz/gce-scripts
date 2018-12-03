@@ -32,10 +32,10 @@ and Docker on the VMs, and run TensorFlow models.
    will be automatically launched on the VM to install CUDA and Docker. It
    takes about 5 min to finish, after which you should restart the VM.
    ```bash
-   # Create a VM with 1 NVIDIA V100 GPU (can choose to have up to 12 vCPU and 78 GB memory)
-   create_custom_instance_with_image_family <instance-name> $IMAGE_FAMILY $IMAGE_PROJECT 12 1 64
+   # Create a VM with 1 NVIDIA V100 GPU (can have up to 12 vCPU and 78 GB memory)
+   create_custom_instance <instance-name> 12 1 64
    # Create a VM with 8 NVIDIA V100 GPUs
-   # create_custom_instance_with_image_family <instance-name> $IMAGE_FAMILY $IMAGE_PROJECT 96 8 512
+   # create_custom_instance <instance-name> 96 8 512
    
    # Wait 5 minutes for VM startup script to finish...
 
@@ -81,3 +81,42 @@ and Docker on the VMs, and run TensorFlow models.
    ```
    Examples of script to run object detection model (SSD) are provided in
    `vm_mlperf_ssd_code_setup.sh`.
+
+
+## Workflow for building TensorFlow from source
+
+Follow the same steps 1--4 from the section above.
+
+5. Build a Docker image from `tf-cuda-10.Dockerfile`. Optionally you can use
+   Google Cloud container registry and upload the image. You might want to
+   clone this repo inside the VM first.
+
+   ```bash
+   # Build Docker image locally (inside VM)
+   docker build -f tf-cuda-10.Dockerfile --tag=tensorflow/tf-cuda-10 .
+
+   # Build Docker image and upload to Google Cloud container registry
+   docker build -f tf-cuda-10.Dockerfile --tag=gcr.io/google.com/tensorflow-performance/tensorflow/tf-cuda-10:latest .
+   gcloud docker -- push gcr.io/google.com/tensorflow-performance/tensorflow/tf-cuda-10:latest
+   ```
+
+6. Check out TensorFlow source code.
+   ```bash
+   cd <path-to-code>
+   git clone https://github.com/tensorflow/tensorflow.git
+   ```
+
+7. Run Docker image, and [build TensorFlow from source](https://www.tensorflow.org/install/source#configure_the_build).
+   ```bash
+   nvidia-docker run -it -v <path-to-code>:<path-to-code> -v /tmp:/tmp tensorflow/tf-cuda-10 bash
+
+   # (inside Docker)
+   cd <path-to-code>/tensorflow
+   git checkout *branch-name*
+   export TF_NEED_CUDA=1
+   export TF_CUDA_VERSION=9.0
+   export TF_CUDNN_VERSION=7
+   export TF_NCCL_VERSION=2
+   yes "" | $PYTHON_BIN_PATH configure.py
+   bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+   ```

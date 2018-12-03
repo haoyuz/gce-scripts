@@ -5,9 +5,6 @@
 # Start from tensorflow nightly GPU
 FROM tensorflow/tensorflow:nightly-gpu
 
-# File author / maintainer
-MAINTAINER Haoyu Zhang
-
 RUN apt-get update
 
 # Install dependencies for pycocotools library. Note: this will not build and

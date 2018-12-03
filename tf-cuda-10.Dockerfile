@@ -61,3 +61,9 @@ RUN python -m pip install --upgrade pip==9.0.1
 RUN python -m pip install --upgrade setuptools
 RUN python -m pip install wheel pyyaml absl-py
 RUN python -m pip install https://storage.googleapis.com/tf-performance/tf_binary/tensorflow-1.12.0.a6d8ffa.AVX2.CUDA10-cp27-cp27mu-linux_x86_64.whl
+
+# Install bazel
+RUN echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list && \
+    curl https://bazel.build/bazel-release.pub.gpg | apt-key add - && \
+    apt-get update && \
+    apt-get install -y bazel
